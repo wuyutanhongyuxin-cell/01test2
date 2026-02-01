@@ -194,30 +194,60 @@ class API01Client:
             value >>= 7
         return result + bytes([bits])
 
+    def _decode_varint(self, data: bytes, offset: int = 0):
+        """解码Varint并返回(值, 消耗的字节数)"""
+        shift = 0
+        result = 0
+
+        while True:
+            byte = data[offset]
+            result |= (byte & 0x7f) << shift
+            offset += 1
+            if not (byte & 0x80):
+                break
+            shift += 7
+
+        return result, offset
+
     async def _execute_action(self, action, keypair, sign_func):
         """执行Protobuf Action"""
-        # 序列化消息
-        message = action.SerializeToString()
+        # 序列化Action
+        payload = action.SerializeToString()
 
-        # 签名
+        # 添加长度前缀
+        length_prefix = self._encode_varint(len(payload))
+        message = length_prefix + payload
+
+        # 签名（包含长度前缀）
         signature = sign_func(message)
 
-        # 组装最终payload: [varint_length][message][signature]
-        length = self._encode_varint(len(message))
-        payload = length + message + signature
+        # 组装最终数据
+        final_data = message + signature
 
         # 发送请求
         async with self.session.post(
             f"{self.api_url}/action",
-            data=payload,
+            data=final_data,
             headers={'Content-Type': 'application/octet-stream'}
         ) as resp:
             response_data = await resp.read()
 
-            # 解析返回的Receipt
-            receipt = schema_pb2.Receipt()
-            receipt.ParseFromString(response_data)
-            return receipt
+            if resp.status != 200:
+                logger.error(f"HTTP错误: {resp.status}")
+                raise RuntimeError(f"HTTP {resp.status}")
+
+            # 解析返回的Receipt（去掉varint前缀）
+            if len(response_data) > 0:
+                # 解码varint长度
+                msg_len, pos = self._decode_varint(response_data, 0)
+                actual_data = response_data[pos:pos + msg_len]
+
+                receipt = schema_pb2.Receipt()
+                receipt.ParseFromString(actual_data)
+
+                return receipt
+            else:
+                raise RuntimeError("Empty response")
 
     # ==================== 订单操作 ====================
 
