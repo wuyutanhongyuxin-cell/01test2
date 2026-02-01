@@ -336,8 +336,20 @@ class API01Client:
 
             # 提取order_id
             order_id = None
+
+            # 调试：打印receipt结构
+            logger.debug(f"Receipt fields: {[f.name for f, _ in receipt.ListFields()]}")
+
             if receipt.HasField("place_order_result"):
-                order_id = receipt.place_order_result.order_id
+                logger.debug(f"place_order_result fields: {dir(receipt.place_order_result)}")
+                # 尝试不同的字段名
+                if hasattr(receipt.place_order_result, 'order_id'):
+                    order_id = receipt.place_order_result.order_id
+                elif hasattr(receipt.place_order_result, 'id'):
+                    order_id = receipt.place_order_result.id
+                else:
+                    logger.error(f"找不到order_id字段，可用字段: {dir(receipt.place_order_result)}")
+                    return None
 
             if order_id:
                 # 保存到本地跟踪
