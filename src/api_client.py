@@ -364,7 +364,7 @@ class API01Client:
             logger.error(f"下单异常: {e}")
             return None
 
-    async def cancel_order(self, order_id: int, market_id: int = 0) -> bool:
+    async def cancel_order(self, order_id: int, market_id: int = 0) -> str:
         """
         取消订单
 
@@ -373,7 +373,9 @@ class API01Client:
             market_id: 市场ID
 
         Returns:
-            True if success
+            'cancelled': 订单成功取消
+            'filled': 订单已成交（ORDER_NOT_FOUND）
+            'error': 撤单失败
         """
         if not schema_pb2:
             raise RuntimeError("schema_pb2 not available")
@@ -396,12 +398,12 @@ class API01Client:
             if receipt.HasField("err"):
                 error_name = schema_pb2.Error.Name(receipt.err)
 
-                # ORDER_NOT_FOUND 不是真正的错误（订单可能已成交）
+                # ORDER_NOT_FOUND = 订单已成交！
                 if 'NOT_FOUND' in error_name:
-                    logger.info(f"订单 {order_id} 已不存在（可能已成交）")
+                    logger.info(f"✅ 订单 {order_id} 已成交")
                     if order_id in self._local_orders:
                         del self._local_orders[order_id]
-                    return True
+                    return 'filled'
 
                 # 会话过期
                 if 'SESSION' in error_name:
@@ -411,18 +413,18 @@ class API01Client:
                     return await self.cancel_order(order_id, market_id)
 
                 logger.error(f"撤单失败: {error_name}")
-                return False
+                return 'error'
 
             # 成功撤单
             if order_id in self._local_orders:
                 del self._local_orders[order_id]
 
             logger.info(f"✅ 撤单成功: order_id={order_id}")
-            return True
+            return 'cancelled'
 
         except Exception as e:
             logger.error(f"撤单异常: {e}")
-            return False
+            return 'error'
 
     async def cancel_all_orders(self, market_id: int = 0) -> int:
         """

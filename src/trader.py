@@ -229,16 +229,16 @@ class GridTrader:
             logger.info(f"开始撤销 {len(grid_result['orders_to_cancel'])} 个远单...")
 
             for order in grid_result['orders_to_cancel']:
-                # 检查是否应该跳过
-                if self.grid_strategy.should_skip_cancel(order['price'], mid_price):
-                    logger.info(f"跳过撤单: 价格接近当前价 (${order['price']:.1f})")
-                    continue
-
                 # 通过价格找到订单ID
                 tracked_order = self.order_tracker.get_order_by_price(order['price'])
                 if tracked_order:
-                    await self.api_client.cancel_order(tracked_order.order_id, self.config.MARKET_ID)
-                    self.order_tracker.remove_order(tracked_order.order_id, 'cancelled')
+                    # 尝试撤单，获取状态（'cancelled', 'filled', 'error'）
+                    status = await self.api_client.cancel_order(tracked_order.order_id, self.config.MARKET_ID)
+
+                    # 根据状态更新tracker
+                    if status in ['cancelled', 'filled']:
+                        self.order_tracker.remove_order(tracked_order.order_id, status)
+
                     await asyncio.sleep(0.5)
 
             # 撤单后等待
