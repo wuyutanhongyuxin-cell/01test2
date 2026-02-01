@@ -334,21 +334,16 @@ class API01Client:
                 logger.error(f"下单失败: {error_name}")
                 return None
 
-            # 提取order_id
+            # 提取order_id - order_id在posted字段里面
             order_id = None
 
-            # 调试：打印receipt结构
-            logger.debug(f"Receipt fields: {[f.name for f, _ in receipt.ListFields()]}")
-
             if receipt.HasField("place_order_result"):
-                logger.debug(f"place_order_result fields: {dir(receipt.place_order_result)}")
-                # 尝试不同的字段名
-                if hasattr(receipt.place_order_result, 'order_id'):
-                    order_id = receipt.place_order_result.order_id
-                elif hasattr(receipt.place_order_result, 'id'):
-                    order_id = receipt.place_order_result.id
+                # order_id在posted嵌套字段中
+                if receipt.place_order_result.HasField("posted"):
+                    order_id = receipt.place_order_result.posted.order_id
+                    logger.debug(f"成功从posted中提取order_id: {order_id}")
                 else:
-                    logger.error(f"找不到order_id字段，可用字段: {dir(receipt.place_order_result)}")
+                    logger.error(f"place_order_result中没有posted字段")
                     return None
 
             if order_id:
