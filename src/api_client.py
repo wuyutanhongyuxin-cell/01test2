@@ -334,10 +334,10 @@ class API01Client:
                 logger.error(f"下单失败: {error_name}")
                 return None
 
-            # 提取order_id（注意：在posted嵌套消息中）
+            # 提取order_id
             order_id = None
-            if receipt.HasField("posted"):
-                order_id = receipt.posted.order_id
+            if receipt.HasField("place_order_result"):
+                order_id = receipt.place_order_result.order_id
 
             if order_id:
                 # 保存到本地跟踪
