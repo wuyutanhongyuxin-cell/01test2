@@ -322,10 +322,57 @@ class GridTrader:
         # 清空本地跟踪
         self.order_tracker.orders.clear()
 
-        # TODO: 实现市价平仓（需要API支持）
-        # 01exchange可能需要用市价单来平仓
-
         logger.info(f"✅ 已取消 {cancelled_count} 个订单")
+
+        # 市价平仓
+        if abs(self.current_position) > 0.0001:  # 有持仓
+            try:
+                # 获取订单簿获取市价
+                orderbook = await self.api_client.get_orderbook(self.config.MARKET_ID)
+                if not orderbook:
+                    logger.error("无法获取订单簿，无法平仓")
+                    return
+
+                asks = orderbook.get('asks', [])
+                bids = orderbook.get('bids', [])
+
+                if self.current_position > 0:
+                    # 多仓，市价卖出平仓
+                    if not bids:
+                        logger.error("没有买单，无法平仓")
+                        return
+                    close_price = float(bids[0][0]) * 0.999  # 稍低于买一价确保成交
+                    side = 'sell'
+                else:
+                    # 空仓，市价买入平仓
+                    if not asks:
+                        logger.error("没有卖单，无法平仓")
+                        return
+                    close_price = float(asks[0][0]) * 1.001  # 稍高于卖一价确保成交
+                    side = 'buy'
+
+                close_size = abs(self.current_position)
+                logger.warning(f"🔴 紧急平仓: {side} {close_size:.5f} BTC @ ${close_price:.1f}")
+
+                # 使用 fill_or_kill 模式强制成交
+                order_id = await self.api_client.place_order(
+                    market_id=self.config.MARKET_ID,
+                    side=side,
+                    price=close_price,
+                    size=close_size,
+                    fill_mode='fill_or_kill',  # 立即全部成交或取消
+                    is_reduce_only=True
+                )
+
+                if order_id:
+                    logger.info(f"✅ 平仓订单已提交: {order_id}")
+                    # 重置持仓
+                    self.current_position = 0
+                else:
+                    logger.error("平仓失败")
+
+            except Exception as e:
+                logger.error(f"平仓异常: {e}")
 
     def get_status(self) -> dict:
         """获取状态信息"""
