@@ -97,7 +97,7 @@ class IndicatorCalculator:
         period: int = 14
     ) -> Optional[float]:
         """
-        计算ADX指标（趋势强度）
+        计算ADX指标（趋势强度）- 使用标准Wilder's Smoothing方法
 
         Args:
             high: 最高价序列
@@ -108,7 +108,7 @@ class IndicatorCalculator:
         Returns:
             当前ADX值
         """
-        if len(high) < period + 1:
+        if len(high) < period * 2:  # ADX需要更多数据
             return None
 
         # 计算真实波幅TR
@@ -121,19 +121,28 @@ class IndicatorCalculator:
         up_move = high.diff()
         down_move = -low.diff()
 
-        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+        plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0), index=high.index)
+        minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0), index=high.index)
 
-        # 平滑处理
-        atr = tr.rolling(window=period).mean()
-        plus_di = 100 * pd.Series(plus_dm).rolling(window=period).mean() / atr
-        minus_di = 100 * pd.Series(minus_dm).rolling(window=period).mean() / atr
+        # 使用Wilder's Smoothing（EMA with alpha=1/period）进行平滑
+        # 相当于 ewm(span=period, adjust=False) 但Wilder使用的是alpha=1/period
+        # ewm的span和alpha关系：alpha = 2/(span+1)，所以 span = (2/alpha) - 1
+        # 对于Wilder的alpha=1/14，span = (2*14) - 1 = 27
+        wilder_span = 2 * period - 1
+
+        atr = tr.ewm(span=wilder_span, adjust=False).mean()
+        plus_dm_smooth = plus_dm.ewm(span=wilder_span, adjust=False).mean()
+        minus_dm_smooth = minus_dm.ewm(span=wilder_span, adjust=False).mean()
+
+        # 计算DI
+        plus_di = 100 * plus_dm_smooth / atr
+        minus_di = 100 * minus_dm_smooth / atr
 
         # 计算DX
         dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
 
-        # 计算ADX
-        adx = dx.rolling(window=period).mean()
+        # 计算ADX（对DX再次使用Wilder's Smoothing）
+        adx = dx.ewm(span=wilder_span, adjust=False).mean()
 
         return float(adx.iloc[-1])
 
