@@ -116,7 +116,10 @@ class API01Client:
     async def get_orderbook(self, market_id: int = 0) -> Optional[Dict]:
         """获取订单簿"""
         try:
-            async with self.session.get(f"{self.api_url}/orderbook", params={'marketId': market_id}) as resp:
+            async with self.session.get(f"{self.api_url}/market/{market_id}/orderbook") as resp:
+                if resp.status != 200:
+                    logger.error(f"获取订单簿失败: HTTP {resp.status}")
+                    return None
                 data = await resp.json()
                 return data
         except Exception as e:
