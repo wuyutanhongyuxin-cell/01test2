@@ -166,13 +166,16 @@ class API01Client:
             error_name = schema_pb2.Error.Name(receipt.err)
             raise RuntimeError(f"创建会话失败: {error_name}")
 
-        # 从返回中提取session_id（需要根据实际返回结构调整）
-        self.trading_session_id = receipt.session_id if hasattr(receipt, 'session_id') else 1
+        # 从返回中提取session_id
+        if receipt.HasField("create_session_result"):
+            self.trading_session_id = receipt.create_session_result.session_id
+            logger.info(f"✅ 交易会话已创建: session_id={self.trading_session_id}")
+        else:
+            raise RuntimeError("CreateSession返回中没有session_id")
+
         # 使用本地时间记录Session创建时间，避免服务器时间和本地时间不一致
         self.session_created_at = time.time()
         self.session_expiry = expiry_timestamp  # 保留用于其他用途
-
-        logger.info(f"✅ 交易会话已创建: session_id={self.trading_session_id}")
 
     async def _check_session_validity(self):
         """检查会话是否有效，过期则重新创建"""
