@@ -130,8 +130,9 @@ class API01Client:
         """获取服务器时间戳"""
         try:
             async with self.session.get(f"{self.api_url}/timestamp") as resp:
-                data = await resp.json()
-                return int(data.get('timestamp', time.time()))
+                text = await resp.text()
+                # API现在直接返回整数，不是JSON
+                return int(text.strip())
         except Exception as e:
             logger.warning(f"获取服务器时间失败，使用本地时间: {e}")
             return int(time.time())
@@ -142,6 +143,10 @@ class API01Client:
         """创建交易会话"""
         if not schema_pb2:
             raise RuntimeError("schema_pb2 not available")
+
+        # 每次创建新的session_keypair，避免DUPLICATE错误
+        from solders.keypair import Keypair
+        self.session_keypair = Keypair()
 
         server_time = await self.get_server_time()
         expiry_timestamp = server_time + 3600  # 1小时有效期
