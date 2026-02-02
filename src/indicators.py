@@ -64,7 +64,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_rsi(prices: pd.Series, period: int = 14) -> Optional[float]:
         """
-        计算RSI指标
+        计算RSI指标 - 使用标准Wilder's Smoothing方法
 
         Args:
             prices: 价格序列
@@ -80,11 +80,18 @@ class IndicatorCalculator:
         delta = prices.diff()
 
         # 分离涨跌
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+
+        # 使用Wilder's Smoothing（与ADX相同）
+        # alpha = 1/period，对应 span = 2*period - 1
+        wilder_span = 2 * period - 1
+
+        avg_gain = gain.ewm(span=wilder_span, adjust=False).mean()
+        avg_loss = loss.ewm(span=wilder_span, adjust=False).mean()
 
         # 计算RS和RSI
-        rs = gain / loss
+        rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
 
         return float(rsi.iloc[-1])
