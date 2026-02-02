@@ -20,6 +20,7 @@ class Config:
     MARKET_ID = int(os.getenv('MARKET_ID', '0'))
 
     # ========== 网格策略参数 ==========
+    ORDER_SIZE = float(os.getenv('ORDER_SIZE', '0.001'))
     TOTAL_ORDERS = int(os.getenv('TOTAL_ORDERS', '18'))
     WINDOW_PERCENT = float(os.getenv('WINDOW_PERCENT', '0.12'))
     SELL_RATIO = float(os.getenv('SELL_RATIO', '0.5'))
@@ -29,6 +30,9 @@ class Config:
     MAX_DRIFT_BUFFER = float(os.getenv('MAX_DRIFT_BUFFER', '2000'))
     MIN_VALID_PRICE = float(os.getenv('MIN_VALID_PRICE', '10000'))
     MAX_MULTIPLIER = float(os.getenv('MAX_MULTIPLIER', '15'))
+
+    # ========== 指标参数 ==========
+    INDICATOR_TIMEFRAME = os.getenv('INDICATOR_TIMEFRAME', '5m')
 
     # ========== 风控参数 ==========
     RSI_MIN = float(os.getenv('RSI_MIN', '30'))

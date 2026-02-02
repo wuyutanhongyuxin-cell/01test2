@@ -56,7 +56,7 @@ class GridTrader:
         self.cycle_count = 0
         self.last_order_time = 0
         self.current_position = 0.0  # BTC仓位
-        self.order_size = 0.001  # 默认开仓大小
+        self.order_size = config.ORDER_SIZE  # 从配置读取开仓大小
 
     async def initialize(self):
         """初始化连接"""
@@ -140,7 +140,7 @@ class GridTrader:
         try:
             indicators = await self.indicator_calc.get_indicators(
                 symbol='BTC/USDT',
-                timeframe='5m'
+                timeframe=self.config.INDICATOR_TIMEFRAME
             )
 
             if not indicators:
