@@ -55,7 +55,8 @@ class GridTrader:
         self.is_running = False
         self.cycle_count = 0
         self.last_order_time = 0
-        self.current_position = 0.0  # BTC仓位
+        # 从配置读取初始持仓（正数=多仓，负数=空仓）
+        self.current_position = config.INITIAL_POSITION
         self.order_size = config.ORDER_SIZE  # 从配置读取开仓大小
 
     async def initialize(self):
@@ -65,8 +66,12 @@ class GridTrader:
         # 连接API
         await self.api_client.connect()
 
-        # TODO: 从API获取当前仓位（01exchange可能需要从链上查询）
-        # 这里暂时使用默认值，实际使用时需要实现
+        # 显示初始持仓
+        if abs(self.current_position) > 0.0001:
+            direction = "多仓" if self.current_position > 0 else "空仓"
+            logger.info(f"📊 初始持仓: {direction} {abs(self.current_position):.5f} BTC (来自INITIAL_POSITION配置)")
+        else:
+            logger.info("📊 初始持仓: 无")
 
         logger.info("✅ 初始化完成")
 
@@ -237,6 +242,14 @@ class GridTrader:
 
                     # 根据状态更新tracker
                     if status in ['cancelled', 'filled']:
+                        # 如果订单已成交，更新持仓
+                        if status == 'filled':
+                            if tracked_order.side == 'buy':
+                                self.current_position += tracked_order.size
+                            else:
+                                self.current_position -= tracked_order.size
+                            logger.info(f"📈 订单成交，持仓更新: {self.current_position:.5f} BTC")
+
                         self.order_tracker.remove_order(tracked_order.order_id, status)
 
                     await asyncio.sleep(0.5)
@@ -324,55 +337,68 @@ class GridTrader:
 
         logger.info(f"✅ 已取消 {cancelled_count} 个订单")
 
-        # 市价平仓
-        if abs(self.current_position) > 0.0001:  # 有持仓
-            try:
-                # 获取订单簿获取市价
-                orderbook = await self.api_client.get_orderbook(self.config.MARKET_ID)
-                if not orderbook:
-                    logger.error("无法获取订单簿，无法平仓")
-                    return
+        # 市价平仓 - 即使持仓跟踪可能不准，也尝试平仓
+        # 如果实际没有持仓，reduce_only订单会被交易所拒绝，这是正常的
+        if abs(self.current_position) > 0.0001:
+            await self._try_close_position()
+        else:
+            logger.info("📊 当前无持仓记录，跳过平仓")
 
-                asks = orderbook.get('asks', [])
-                bids = orderbook.get('bids', [])
+    async def _try_close_position(self):
+        """尝试平仓当前持仓"""
+        try:
+            # 获取订单簿获取市价
+            orderbook = await self.api_client.get_orderbook(self.config.MARKET_ID)
+            if not orderbook:
+                logger.error("无法获取订单簿，无法平仓")
+                return False
 
-                if self.current_position > 0:
-                    # 多仓，市价卖出平仓
-                    if not bids:
-                        logger.error("没有买单，无法平仓")
-                        return
-                    close_price = float(bids[0][0]) * 0.999  # 稍低于买一价确保成交
-                    side = 'sell'
-                else:
-                    # 空仓，市价买入平仓
-                    if not asks:
-                        logger.error("没有卖单，无法平仓")
-                        return
-                    close_price = float(asks[0][0]) * 1.001  # 稍高于卖一价确保成交
-                    side = 'buy'
+            asks = orderbook.get('asks', [])
+            bids = orderbook.get('bids', [])
 
-                close_size = abs(self.current_position)
-                logger.warning(f"🔴 紧急平仓: {side} {close_size:.5f} BTC @ ${close_price:.1f}")
+            if self.current_position > 0:
+                # 多仓，市价卖出平仓
+                if not bids:
+                    logger.error("没有买单，无法平仓")
+                    return False
+                # 使用比买一价低0.5%的价格确保成交
+                close_price = float(bids[0][0]) * 0.995
+                side = 'sell'
+            else:
+                # 空仓，市价买入平仓
+                if not asks:
+                    logger.error("没有卖单，无法平仓")
+                    return False
+                # 使用比卖一价高0.5%的价格确保成交
+                close_price = float(asks[0][0]) * 1.005
+                side = 'buy'
 
-                # 使用 fill_or_kill 模式强制成交
-                order_id = await self.api_client.place_order(
-                    market_id=self.config.MARKET_ID,
-                    side=side,
-                    price=close_price,
-                    size=close_size,
-                    fill_mode='fill_or_kill',  # 立即全部成交或取消
-                    is_reduce_only=True
-                )
+            close_size = abs(self.current_position)
+            logger.warning(f"🔴 紧急平仓: {side} {close_size:.5f} BTC @ ${close_price:.1f}")
 
-                if order_id:
-                    logger.info(f"✅ 平仓订单已提交: {order_id}")
-                    # 重置持仓
-                    self.current_position = 0
-                else:
-                    logger.error("平仓失败")
+            # 使用 limit 模式 + reduce_only
+            # 注意：01exchange可能不支持fill_or_kill，改用limit
+            order_id = await self.api_client.place_order(
+                market_id=self.config.MARKET_ID,
+                side=side,
+                price=close_price,
+                size=close_size,
+                fill_mode='limit',  # 使用limit模式
+                is_reduce_only=True  # 只减仓，确保不会开新仓
+            )
 
-            except Exception as e:
-                logger.error(f"平仓异常: {e}")
+            if order_id:
+                logger.info(f"✅ 平仓订单已提交: order_id={order_id}")
+                # 重置持仓（假设订单会成交）
+                self.current_position = 0
+                return True
+            else:
+                logger.warning("⚠️ 平仓订单提交失败（可能实际无持仓）")
+                return False
+
+        except Exception as e:
+            logger.error(f"平仓异常: {e}")
+            return False
 
     def get_status(self) -> dict:
         """获取状态信息"""

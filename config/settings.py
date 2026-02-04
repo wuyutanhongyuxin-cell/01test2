@@ -21,6 +21,9 @@ class Config:
 
     # ========== 网格策略参数 ==========
     ORDER_SIZE = float(os.getenv('ORDER_SIZE', '0.001'))
+    # 初始持仓（正数=多仓，负数=空仓，0=无仓位）
+    # 脚本启动时会使用此值，之后根据成交自动更新
+    INITIAL_POSITION = float(os.getenv('INITIAL_POSITION', '0'))
     TOTAL_ORDERS = int(os.getenv('TOTAL_ORDERS', '18'))
     WINDOW_PERCENT = float(os.getenv('WINDOW_PERCENT', '0.12'))
     SELL_RATIO = float(os.getenv('SELL_RATIO', '0.5'))
