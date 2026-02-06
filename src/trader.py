@@ -376,14 +376,14 @@ class GridTrader:
             close_size = abs(self.current_position)
             logger.warning(f"🔴 紧急平仓: {side} {close_size:.5f} BTC @ ${close_price:.1f}")
 
-            # 使用 limit 模式 + reduce_only
-            # 注意：01exchange可能不支持fill_or_kill，改用limit
+            # 使用 immediate 模式（立即成交或取消）+ reduce_only
+            # 01exchange在平仓时要求使用IMMEDIATE_OR_CANCEL模式
             order_id = await self.api_client.place_order(
                 market_id=self.config.MARKET_ID,
                 side=side,
                 price=close_price,
                 size=close_size,
-                fill_mode='limit',  # 使用limit模式
+                fill_mode='immediate',  # 使用立即成交模式
                 is_reduce_only=True  # 只减仓，确保不会开新仓
             )
 

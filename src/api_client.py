@@ -276,7 +276,7 @@ class API01Client:
         side: str,  # 'buy' or 'sell'
         price: float,
         size: float,
-        fill_mode: str = 'limit',  # 'limit' or 'post_only'
+        fill_mode: str = 'limit',  # 'limit', 'post_only', or 'immediate'
         is_reduce_only: bool = False
     ) -> Optional[int]:
         """
@@ -287,7 +287,7 @@ class API01Client:
             side: 'buy' 或 'sell'
             price: 价格
             size: 数量
-            fill_mode: 'limit' 或 'post_only'
+            fill_mode: 'limit', 'post_only', 或 'immediate'
             is_reduce_only: 是否只减仓
 
         Returns:
@@ -313,7 +313,15 @@ class API01Client:
         action.place_order.session_id = self.trading_session_id
         action.place_order.market_id = market_id
         action.place_order.side = schema_pb2.BID if side.lower() == 'buy' else schema_pb2.ASK
-        action.place_order.fill_mode = schema_pb2.POST_ONLY if fill_mode == 'post_only' else schema_pb2.LIMIT
+
+        # 设置订单模式
+        if fill_mode == 'post_only':
+            action.place_order.fill_mode = schema_pb2.POST_ONLY
+        elif fill_mode == 'immediate':
+            action.place_order.fill_mode = schema_pb2.IMMEDIATE_OR_CANCEL
+        else:
+            action.place_order.fill_mode = schema_pb2.LIMIT
+
         action.place_order.is_reduce_only = is_reduce_only
         action.place_order.price = raw_price
         action.place_order.size = raw_size
